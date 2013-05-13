@@ -4,17 +4,19 @@ import (
 	"code.google.com/p/gosqlite/sqlite"
 	"encoding/json"
 	"flag"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
 	"os"
 	"regexp"
+	"strconv"
 	"time"
 )
 
 type ServerConfig struct {
-	key string `json:"key"`
+	Key string `json:"key"`
 }
 
 var gServerConfig ServerConfig
@@ -40,8 +42,8 @@ func kickOffTest(conn *sqlite.Conn) {
 	location := "Dulles:Firefox.DSL"
 	testurl := url.QueryEscape("http://www.google.com/search?hl=en&q=mozilla+foundation")
 	runs := string(2)
-	key := gServerConfig.key
-	url := "https://www.webpagetest.org/runtest.php?url=" + testurl + "&runs=" + runs + "&f=xml&k=" + key + "&location=" + location
+
+	url := "https://www.webpagetest.org/runtest.php?url=" + testurl + "&runs=" + runs + "&f=xml&k=" + gServerConfig.Key + "&location=" + location
 
 	response, err := http.Get(url)
 	if err != nil {
@@ -59,6 +61,12 @@ func kickOffTest(conn *sqlite.Conn) {
 
 	testIdRegEx := regexp.MustCompile(`<testId>(.*)</testId>`)
 	r := testIdRegEx.FindSubmatch(contents)
+
+	if r == nil {
+		log.Println("contents: ", string(contents))
+		log.Fatalf("testId could not be found when requesting new test");
+	}
+
 	testId := string(r[1])
 
 	addTestIdToDb(conn, testId)
@@ -131,7 +139,7 @@ func addTestIdToDb(conn *sqlite.Conn, testId string) {
 
 	log.Println("Adding test id: " + testId + " to db.")
 	now := time.Now()
-	err := conn.Exec("INSERT INTO testRuns(testId, date, speedIndex) VALUES('" + testId + "', '" + now.String() + "', '" + "-1" + "');")
+	err := conn.Exec("INSERT INTO testRuns(testId, date, speedIndex) VALUES('" + testId + "', '" + strconv.FormatInt(now.Unix(), 10) + "', '" + "-1" + "');")
 	if err != nil {
 		log.Fatalf("Error while Inserting: ", err)
 	}
@@ -160,11 +168,13 @@ func dumpDatabase(conn *sqlite.Conn) {
 		}
 
 		// this should go somewhere else
-		log.Println("%v, %v, %v", testId, date, speedIndex)
+		fmt.Println(date, ", ", testId, ", ", speedIndex)
 	}
 }
 
 func main() {
+
+	readConfig()
 
 	var getSpeedIndex = flag.Bool("get", false, "get speedIndex")
 	var newTest = flag.Bool("create", false, "create test run")
