@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<response>
+  <statusCode>200</statusCode>
+  <statusText>Ok</statusText>
+  <data>
+    <testId>130511_KQ_66H</testId>
+    <ownerKey>60ce851fe295b582b64ed7cbf000894983f43aad</ownerKey>
+    <xmlUrl>http://www.webpagetest.org/xmlResult/130511_KQ_66H/</xmlUrl>
+    <userUrl>http://www.webpagetest.org/result/130511_KQ_66H/</userUrl>
+    <summaryCSV>http://www.webpagetest.org/result/130511_KQ_66H/page_data.csv</summaryCSV>
+    <detailCSV>http://www.webpagetest.org/result/130511_KQ_66H/requests.csv</detailCSV>
+    <jsonUrl>http://www.webpagetest.org/jsonResult.php?test=130511_KQ_66H/</jsonUrl>
+  </data>
+</response>
