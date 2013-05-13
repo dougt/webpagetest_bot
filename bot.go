@@ -85,7 +85,6 @@ func updateSpeedIndex(conn *sqlite.Conn) {
 			log.Fatalf("Error while getting row data: ", err)
 		}
 
-		//xx
 		requestSpeedIndex(conn, testId)
 	}
 }
