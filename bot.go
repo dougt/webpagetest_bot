@@ -1,19 +1,20 @@
 package main
 
 import (
-	"encoding/json"
-	"time"
 	"code.google.com/p/gosqlite/sqlite"
+	"encoding/json"
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
 	"regexp"
+	"time"
 )
 
 type ServerConfig struct {
-	key  string `json:"key"`
+	key string `json:"key"`
 }
 
 var gServerConfig ServerConfig
@@ -37,7 +38,7 @@ func readConfig() {
 	}
 }
 
-func kickOffTest() string {
+func kickOffTest(conn *sqlite.Conn) {
 
 	location := "Dulles:Firefox.DSL"
 	testurl := url.QueryEscape("http://www.google.com/search?hl=en&q=mozilla+foundation")
@@ -64,9 +65,8 @@ func kickOffTest() string {
 	testIdRegEx := regexp.MustCompile(`<testId>(.*)</testId>`)
 	r := testIdRegEx.FindSubmatch(contents)
 	testId := string(r[1])
-	fmt.Printf("testId:  %+v\n", testId)
 
-	return testId
+	addTestIdToDb(conn, testId)
 }
 
 func updateSpeedIndex(conn *sqlite.Conn) {
@@ -142,7 +142,7 @@ func requestSpeedIndex(conn *sqlite.Conn, testId string) {
 func addTestIdToDb(conn *sqlite.Conn, testId string) {
 
 	fmt.Printf("Adding test id: " + testId + " to db.\n")
-	now := time.Now();
+	now := time.Now()
 	err := conn.Exec("INSERT INTO testRuns(testId, date, speedIndex) VALUES('" + testId + "', '" + now.String() + "', '" + "-1" + "');")
 	if err != nil {
 		fmt.Println("Error while Inserting: %s", err)
@@ -179,6 +179,13 @@ func dumpDatabase(conn *sqlite.Conn) {
 
 func main() {
 
+	var getSpeedIndex = flag.Bool("get", false, "get speedIndex")
+	var newTest = flag.Bool("create", false, "create test run")
+	var dump = flag.Bool("dump", false, "dump dataset")
+
+	flag.Parse();
+
+
 	db := "tests.db"
 	conn, err := sqlite.Open(db)
 	if err != nil {
@@ -188,18 +195,15 @@ func main() {
 	conn.Exec("CREATE TABLE testRuns(id INTEGER PRIMARY KEY AUTOINCREMENT, testId TEXT, date TEXT, speedIndex INT);")
 	defer conn.Close()
 
+	if *newTest {
+		kickOffTest(conn);
+	}
 
+	if *getSpeedIndex {
+		updateSpeedIndex(conn)
+	}
 
-
-	//	testId := kickOffTest();
-		testId := "100"
-
-		addTestIdToDb(conn, "130511_KQ_66H")
-		addTestIdToDb(conn, testId)
-
-	
-	updateSpeedIndex(conn)
-
-
-	dumpDatabase(conn)
+	if *dump {
+		dumpDatabase(conn)
+	}
 }
