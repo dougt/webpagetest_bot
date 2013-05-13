@@ -4,8 +4,8 @@ import (
 	"code.google.com/p/gosqlite/sqlite"
 	"encoding/json"
 	"flag"
-	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -26,15 +26,12 @@ func readConfig() {
 
 	data, err = ioutil.ReadFile("config.json")
 	if err != nil {
-		fmt.Printf("Not configured.  Could not find config.json\n")
-		os.Exit(-1)
+		log.Fatalf("Not configured.  Could not find config.json")
 	}
 
 	err = json.Unmarshal(data, &gServerConfig)
 	if err != nil {
-		fmt.Printf("Could not unmarshal config.json (%s)\n", err)
-		os.Exit(-1)
-		return
+		log.Fatalf("Could not unmarshal config.json: ", err)
 	}
 }
 
@@ -48,15 +45,13 @@ func kickOffTest(conn *sqlite.Conn) {
 
 	response, err := http.Get(url)
 	if err != nil {
-		fmt.Printf("%s", err)
-		os.Exit(1)
+		log.Fatalf("%v", err)
 	}
 
 	defer response.Body.Close()
 	contents, err := ioutil.ReadAll(response.Body)
 	if err != nil {
-		fmt.Printf("%s", err)
-		os.Exit(1)
+		log.Fatalf("%v", err)
 	}
 
 	// just search for the SpeedIndex with a regex.
@@ -71,29 +66,26 @@ func kickOffTest(conn *sqlite.Conn) {
 
 func updateSpeedIndex(conn *sqlite.Conn) {
 
+	// Find all test runs that do not have a speedIndex yet (they are set to -1)
 	selectStmt, err := conn.Prepare("SELECT testId FROM testRuns WHERE speedIndex='-1';")
 	if err != nil {
-		fmt.Println("Error while creating selectSmt: %s", err)
-		return
+		log.Fatalf("Error while preparing select: ", err)
 	}
 
 	err = selectStmt.Exec()
 	if err != nil {
-		fmt.Println("Error while Selecting: %s", err)
-		return
+		log.Fatalf("Error while exec select: ", err)
 	}
 
 	for selectStmt.Next() {
-		fmt.Println("next... \n;")
 
 		var testId = ""
 		err = selectStmt.Scan(&testId)
 		if err != nil {
-			fmt.Printf("Error while getting row data: %s\n", err)
-			return
+			log.Fatalf("Error while getting row data: ", err)
 		}
-		fmt.Printf("Id => %s\n", testId)
 
+		//xx
 		requestSpeedIndex(conn, testId)
 	}
 }
@@ -104,15 +96,13 @@ func requestSpeedIndex(conn *sqlite.Conn, testId string) {
 
 	response, err := http.Get(url)
 	if err != nil {
-		fmt.Printf("%s", err)
-		os.Exit(1)
+		log.Fatalf("%v", err)
 	}
 
 	defer response.Body.Close()
 	contents, err := ioutil.ReadAll(response.Body)
 	if err != nil {
-		fmt.Printf("%s", err)
-		os.Exit(1)
+		log.Fatalf("%v", err)
 	}
 
 	// just search for the SpeedIndex with a regex.
@@ -121,31 +111,30 @@ func requestSpeedIndex(conn *sqlite.Conn, testId string) {
 	speedIndexRegEx := regexp.MustCompile(`<SpeedIndex>(.*)</SpeedIndex>`)
 	r := speedIndexRegEx.FindSubmatch(contents)
 	if r == nil {
-		fmt.Printf("speed index not found\n")
+		log.Println("speed index not found for testId: ", testId)
 		return
 	}
 
 	speedIndex := string(r[1])
-	fmt.Printf("speed index:  %+v\n", speedIndex)
+	log.Println("speed index found for testId: ", testId, " speedIndex: ", speedIndex)
 
 	if err != nil {
-		fmt.Printf("error: %x", err)
-		return
+		log.Fatalf("error: %v", err)
 	}
 
 	err = conn.Exec("UPDATE testRuns SET speedIndex=" + speedIndex + " WHERE testId='" + testId + "'")
 	if err != nil {
-		fmt.Println("Error while update: %s", err)
+		log.Println("Error while update testId: "+testId+" err: ", err)
 	}
 }
 
 func addTestIdToDb(conn *sqlite.Conn, testId string) {
 
-	fmt.Printf("Adding test id: " + testId + " to db.\n")
+	log.Println("Adding test id: " + testId + " to db.")
 	now := time.Now()
 	err := conn.Exec("INSERT INTO testRuns(testId, date, speedIndex) VALUES('" + testId + "', '" + now.String() + "', '" + "-1" + "');")
 	if err != nil {
-		fmt.Println("Error while Inserting: %s", err)
+		log.Fatalf("Error while Inserting: ", err)
 	}
 }
 
@@ -153,14 +142,12 @@ func dumpDatabase(conn *sqlite.Conn) {
 
 	selectStmt, err := conn.Prepare("SELECT testId, date, speedIndex FROM testRuns;")
 	if err != nil {
-		fmt.Println("Error while creating selectSmt: %s", err)
-		return
+		log.Fatalf("Error while creating selectSmt: ", err)
 	}
 
 	err = selectStmt.Exec()
 	if err != nil {
-		fmt.Println("Error while Selecting: %s", err)
-		return
+		log.Fatalf("Error while Selecting: ", err)
 	}
 
 	for selectStmt.Next() {
@@ -170,10 +157,11 @@ func dumpDatabase(conn *sqlite.Conn) {
 
 		err = selectStmt.Scan(&testId, &date, &speedIndex)
 		if err != nil {
-			fmt.Printf("Error while getting row data: %s\n", err)
-			return
+			log.Fatalf("Error while getting row data: ", err)
 		}
-		fmt.Printf("%s, %s, %s\n", testId, date, speedIndex)
+
+		// this should go somewhere else
+		log.Println("%v, %v, %v", testId, date, speedIndex)
 	}
 }
 
@@ -182,21 +170,31 @@ func main() {
 	var getSpeedIndex = flag.Bool("get", false, "get speedIndex")
 	var newTest = flag.Bool("create", false, "create test run")
 	var dump = flag.Bool("dump", false, "dump dataset")
+	var debug = flag.Bool("debug", false, "enable debug logging")
+	var logFile = flag.String("logFile", "", "path of log file")
+	var databaseFile = flag.String("databaseFile", "tests.db", "path of sqlite database")
 
-	flag.Parse();
+	flag.Parse()
 
+	if *debug == false {
+		log.SetOutput(ioutil.Discard)
+	} else if *logFile != "" {
+		f, err := os.OpenFile(*logFile, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0666)
+		if err == nil {
+			log.SetOutput(f)
+		}
+	}
 
-	db := "tests.db"
+	db := *databaseFile
 	conn, err := sqlite.Open(db)
 	if err != nil {
-		fmt.Println("Unable to open the database: %s", err)
-		os.Exit(1)
+		log.Fatalf("Unable to open the database: ", err)
 	}
 	conn.Exec("CREATE TABLE testRuns(id INTEGER PRIMARY KEY AUTOINCREMENT, testId TEXT, date TEXT, speedIndex INT);")
 	defer conn.Close()
 
 	if *newTest {
-		kickOffTest(conn);
+		kickOffTest(conn)
 	}
 
 	if *getSpeedIndex {
